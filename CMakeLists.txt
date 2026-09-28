@@ -1,5 +1,10 @@
-cmake_minimum_required(VERSION 3.0)
-project(double-conversion VERSION 3.1.5)
+# This project likely works with older versions, such as 3.5, but that
+# configuration is not tested.
+# When changing the minimum required versions make sure to update the CI.
+cmake_minimum_required(VERSION 3.29...4.0.1)
+project(double-conversion VERSION 3.4.0)
+
+option(BUILD_SHARED_LIBS "Build shared libraries (.dll/.so) instead of static ones (.lib/.a)" OFF)
 
 if(BUILD_SHARED_LIBS AND MSVC)
   set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
@@ -7,6 +12,7 @@ endif()
 
 set(headers
     double-conversion/bignum.h
+    double-conversion/bignum-dtoa.h
     double-conversion/cached-powers.h
     double-conversion/diy-fp.h
     double-conversion/double-conversion.h
@@ -34,6 +40,10 @@ target_include_directories(
 
 # pick a version #
 set_target_properties(double-conversion PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION 3)
+
+# Alias so the library can be consumed via add_subdirectory()/FetchContent
+# under the same name as the installed package (see install(EXPORT) below).
+add_library(double-conversion::double-conversion ALIAS double-conversion)
 
 # set up testing if requested
 option(BUILD_TESTING "Build test programs" OFF)
@@ -81,6 +91,23 @@ configure_package_config_file(
     INSTALL_DESTINATION "${config_install_dir}"
 )
 
+function(prefix_rel_path var_name install_dir)
+    if(IS_ABSOLUTE "${install_dir}")
+        set(${var_name} "${install_dir}" PARENT_SCOPE)
+    else()
+        set(${var_name} "\${prefix}/${install_dir}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Generate pkg-config file
+prefix_rel_path(PKG_CONFIG_LIBDIR "${CMAKE_INSTALL_LIBDIR}")
+prefix_rel_path(PKG_CONFIG_INCLUDEDIR "${CMAKE_INSTALL_INCLUDEDIR}")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/double-conversion.pc.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/double-conversion.pc"
+    @ONLY
+)
+
 # Targets:
 #   * <prefix>/lib/libdouble-conversion.a
 #   * header location after install: <prefix>/include/double-conversion/*.h
@@ -101,6 +128,13 @@ install(
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/double-conversion"
 )
 
+# pkg-config
+#  * <prefix>/lib/pkgconfig/double-conversion.pc
+install(
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/double-conversion.pc"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
+)
+
 # Config
 #   * <prefix>/lib/cmake/double-conversion/double-conversionConfig.cmake
 #   * <prefix>/lib/cmake/double-conversion/double-conversionConfigVersion.cmake
@@ -116,3 +150,13 @@ install(
     NAMESPACE "${namespace}"
     DESTINATION "${config_install_dir}"
 )
+
+if (MSVC AND BUILD_SHARED_LIBS)
+  # Install companion PDB for Visual Studio
+  install(
+    FILES $<TARGET_PDB_FILE:double-conversion>
+    TYPE BIN
+    OPTIONAL
+  )
+endif()
+

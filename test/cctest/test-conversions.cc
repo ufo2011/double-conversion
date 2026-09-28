@@ -278,6 +278,32 @@ TEST(DoubleToShortest) {
   builder.Reset();
   CHECK(dc6.ToShortest(-Double::NaN(), &builder));
   CHECK_EQ("NaN", builder.Finalize());
+
+  // Test examples with one significant digit.
+  flags = DoubleToStringConverter::EMIT_TRAILING_DECIMAL_POINT |
+      DoubleToStringConverter::EMIT_TRAILING_ZERO_AFTER_POINT;
+  DoubleToStringConverter dc7(flags, NULL, NULL, 'e', 0, 0, 0, 0);
+  flags = DoubleToStringConverter::EMIT_TRAILING_DECIMAL_POINT |
+      DoubleToStringConverter::EMIT_TRAILING_ZERO_AFTER_POINT |
+      DoubleToStringConverter::EMIT_TRAILING_DECIMAL_POINT_IN_EXPONENTIAL;
+  DoubleToStringConverter dc8(flags, NULL, NULL, 'e', 0, 0, 0, 0);
+  flags = DoubleToStringConverter::EMIT_TRAILING_DECIMAL_POINT |
+      DoubleToStringConverter::EMIT_TRAILING_ZERO_AFTER_POINT |
+      DoubleToStringConverter::EMIT_TRAILING_DECIMAL_POINT_IN_EXPONENTIAL |
+      DoubleToStringConverter::EMIT_TRAILING_ZERO_AFTER_POINT_IN_EXPONENTIAL;
+  DoubleToStringConverter dc9(flags, NULL, NULL, 'e', 0, 0, 0, 0);
+
+  builder.Reset();
+  CHECK(dc7.ToShortest(0.0009, &builder));
+  CHECK_EQ("9e-4", builder.Finalize());
+
+  builder.Reset();
+  CHECK(dc8.ToShortest(0.0009, &builder));
+  CHECK_EQ("9.e-4", builder.Finalize());
+
+  builder.Reset();
+  CHECK(dc9.ToShortest(0.0009, &builder));
+  CHECK_EQ("9.0e-4", builder.Finalize());
 }
 
 
@@ -564,6 +590,16 @@ TEST(DoubleToFixed) {
   builder.Reset();
   CHECK(!dc.ToFixed(
       9e59, DoubleToStringConverter::kMaxFixedDigitsAfterPoint + 1, &builder));
+  CHECK_EQ(0, builder.position());
+
+  // A negative digit count would otherwise pad the result with
+  // -requested_digits characters, overrunning the caller's buffer.
+  builder.Reset();
+  CHECK(!dc.ToFixed(1e-30, -1, &builder));
+  CHECK_EQ(0, builder.position());
+
+  builder.Reset();
+  CHECK(!dc.ToFixed(1e-30, -1000, &builder));
   CHECK_EQ(0, builder.position());
 
   builder.Reset();
@@ -1259,6 +1295,81 @@ TEST(DoubleToPrecision) {
   builder.Reset();
   CHECK(dc5.ToPrecision(2000080, 5, &builder));
   CHECK_EQ("2.0001e6", builder.Finalize());
+
+  // Test examples with one significant digit.
+  flags = DoubleToStringConverter::EMIT_TRAILING_DECIMAL_POINT |
+      DoubleToStringConverter::EMIT_TRAILING_ZERO_AFTER_POINT;
+  DoubleToStringConverter dc12(flags, NULL, NULL, 'e', 0, 0, 0, 0);
+  flags = DoubleToStringConverter::EMIT_TRAILING_DECIMAL_POINT |
+      DoubleToStringConverter::EMIT_TRAILING_ZERO_AFTER_POINT |
+      DoubleToStringConverter::EMIT_TRAILING_DECIMAL_POINT_IN_EXPONENTIAL;
+  DoubleToStringConverter dc13(flags, NULL, NULL, 'e', 0, 0, 0, 0);
+  flags = DoubleToStringConverter::EMIT_TRAILING_DECIMAL_POINT |
+      DoubleToStringConverter::EMIT_TRAILING_ZERO_AFTER_POINT |
+      DoubleToStringConverter::EMIT_TRAILING_DECIMAL_POINT_IN_EXPONENTIAL |
+      DoubleToStringConverter::EMIT_TRAILING_ZERO_AFTER_POINT_IN_EXPONENTIAL;
+  DoubleToStringConverter dc14(flags, NULL, NULL, 'e', 0, 0, 0, 0);
+
+  builder.Reset();
+  CHECK(dc12.ToPrecision(0.0009, 1, &builder));
+  CHECK_EQ("9e-4", builder.Finalize());
+
+  builder.Reset();
+  CHECK(dc13.ToPrecision(0.0009, 1, &builder));
+  CHECK_EQ("9.e-4", builder.Finalize());
+
+  builder.Reset();
+  CHECK(dc14.ToPrecision(0.0009, 1, &builder));
+  CHECK_EQ("9.0e-4", builder.Finalize());
+}
+
+
+TEST(DoubleToStringMaximumResultLength) {
+  const int kBufferSize = 512;
+  char buffer[kBufferSize];
+  StringBuilder builder(buffer, kBufferSize);
+
+  // A decimal result is bounded by max_leading_padding_zeroes_in_precision_mode
+  // and not by the exponential bound: the sign, the decimal point and the
+  // leading zeroes (which include the '0' before the point) come on top of
+  // 'precision'.
+  const int kMaxLeadingPadding = 6;  // The value used by the EcmaScript
+                                     // converter.
+  const DoubleToStringConverter& dc =
+      DoubleToStringConverter::EcmaScriptConverter();
+
+  builder.Reset();
+  CHECK(dc.ToPrecision(-0.000001, 2, &builder));
+  CHECK_EQ(2 + kMaxLeadingPadding + 2, builder.position());
+  CHECK_EQ("-0.0000010", builder.Finalize());
+
+  builder.Reset();
+  CHECK(dc.ToPrecision(
+      -1.2345e-6, DoubleToStringConverter::kMaxPrecisionDigits, &builder));
+  CHECK_EQ(
+      DoubleToStringConverter::kMaxPrecisionDigits + kMaxLeadingPadding + 2,
+      builder.position());
+  builder.Finalize();
+
+  // An exponential result carries up to 5 exponent digits, since
+  // min_exponent_width pads the exponent.
+  int flags = DoubleToStringConverter::UNIQUE_ZERO |
+      DoubleToStringConverter::EMIT_POSITIVE_EXPONENT_SIGN;
+  DoubleToStringConverter dc2(flags, "Infinity", "NaN", 'e', -6, 21, 6, 0, 5);
+
+  builder.Reset();
+  CHECK(dc2.ToExponential(
+      -1e-300, DoubleToStringConverter::kMaxExponentialDigits, &builder));
+  CHECK_EQ(DoubleToStringConverter::kMaxExponentialDigits + 10,
+           builder.position());
+  builder.Finalize();
+
+  builder.Reset();
+  CHECK(dc2.ToPrecision(
+      -1e-300, DoubleToStringConverter::kMaxPrecisionDigits, &builder));
+  CHECK_EQ(DoubleToStringConverter::kMaxPrecisionDigits + 9,
+           builder.position());
+  builder.Finalize();
 }
 
 
@@ -2072,14 +2183,14 @@ static double StrToD(const char* str, int flags, double empty_string_value,
                      uc16 separator = StringToDoubleConverter::kNoSeparator) {
   StringToDoubleConverter converter(flags, empty_string_value, Double::NaN(),
                                     NULL, NULL, separator);
-  double result = converter.StringToDouble(str, strlen(str),
+  int len = static_cast<int>(strlen(str));
+  double result = converter.StringToDouble(str, len,
                                            processed_characters_count);
   *processed_all =
       ((strlen(str) == static_cast<unsigned>(*processed_characters_count)));
 
   uc16 buffer16[256];
   DOUBLE_CONVERSION_ASSERT(strlen(str) < DOUBLE_CONVERSION_ARRAY_SIZE(buffer16));
-  int len = strlen(str);
   for (int i = 0; i < len; i++) {
     buffer16[i] = str[i];
   }
@@ -2631,6 +2742,21 @@ TEST(StringToDoubleHexString) {
                                  &processed, &all_used));
   CHECK_EQ(0, processed);
 
+  // Trailing whitespace is junk without ALLOW_TRAILING_SPACES, as for
+  // decimal numbers.
+  CHECK_EQ(Double::NaN(), StrToD("0x12 ", flags, 0.0,
+                                 &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  CHECK_EQ(Double::NaN(), StrToD("0x12\t\n", flags, 0.0,
+                                 &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  // Same for a significand that overflows 53 bits.
+  CHECK_EQ(Double::NaN(), StrToD("0x10000000000000000 ", flags, 0.0,
+                                 &processed, &all_used));
+  CHECK_EQ(0, processed);
+
   CHECK_EQ(Double::NaN(), StrToD("+", flags, 0.0, &processed, &all_used));
   CHECK_EQ(0, processed);
 
@@ -2988,6 +3114,52 @@ TEST(StringToDoubleHexString) {
   CHECK_EQ(-0.0, StrToD("-0x1p-2000", flags, 0.0, &processed, &all_used));
   CHECK(all_used);
 
+  // Extreme exponents in hex-floats must not overflow internal exponent arithmetic.
+  CHECK_EQ(Double::Infinity(),
+           StrToD("0x1p2147483647", flags, 0.0, &processed, &all_used));
+  CHECK(all_used);
+
+  CHECK_EQ(0.0,
+           StrToD("0x1p-2147483647", flags, 0.0, &processed, &all_used));
+  CHECK(all_used);
+
+  CHECK_EQ(-0.0,
+           StrToD("-0x1p-2147483647", flags, 0.0, &processed, &all_used));
+  CHECK(all_used);
+
+  // Large-but-finite hex-floats must not overflow to infinity. Every value
+  // below is a normal double well within range (2^1023 is the largest power of
+  // two that fits).
+  CHECK_EQ(1.0715086071862673e+301, StrToD("0x1p1000", flags, 0.0,
+                                           &processed, &all_used));
+  CHECK(all_used);
+
+  CHECK_EQ(8.9884656743115795e+307, StrToD("0x1p1023", flags, 0.0,
+                                           &processed, &all_used));
+  CHECK(all_used);
+
+  CHECK_EQ(1.6853373139334212e+307, StrToD("0x1.8p1020", flags, 0.0,
+                                           &processed, &all_used));
+  CHECK(all_used);
+
+  CHECK_EQ(5.8251712944653672e+299, StrToD("0xdeadp980", flags, 0.0,
+                                           &processed, &all_used));
+  CHECK(all_used);
+
+  // Small subnormals must not underflow to zero. 2^-1074 is the smallest
+  // positive double, reachable as "0x2p-1075" or "0x1p-1074".
+  CHECK_EQ(4.9406564584124654e-324, StrToD("0x2p-1075", flags, 0.0,
+                                           &processed, &all_used));
+  CHECK(all_used);
+
+  CHECK_EQ(4.9406564584124654e-324, StrToD("0x1p-1074", flags, 0.0,
+                                           &processed, &all_used));
+  CHECK(all_used);
+
+  CHECK_EQ(1.4821969375237396e-323, StrToD("0x3p-1074", flags, 0.0,
+                                           &processed, &all_used));
+  CHECK(all_used);
+
   CHECK_EQ(Double::NaN(), StrToD(" ", flags, Double::NaN(),
                                  &processed, &all_used));
   CHECK_EQ(0, processed);
@@ -3051,6 +3223,54 @@ TEST(StringToDoubleHexString) {
 
   CHECK_EQ(0.0, StrToD("0x1.p-10000000000000000", flags, 0.0,
                                  &processed, &all_used));
+  CHECK(all_used);
+
+  // Trailing whitespace is junk without ALLOW_TRAILING_SPACES, as for
+  // decimal numbers.
+  CHECK_EQ(Double::NaN(), StrToD("0x3p0 ", flags, 0.0,
+                                 &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  CHECK_EQ(Double::NaN(), StrToD("0x3.p0 ", flags, 0.0,
+                                 &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  CHECK_EQ(Double::NaN(), StrToD("0x10000000000000001p0 ", flags, 0.0,
+                                 &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  // Without ALLOW_HEX a hex literal that is not a hex-float is junk.
+  CHECK_EQ(Double::NaN(), StrToD("0x12", flags, 0.0, &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  CHECK_EQ(Double::NaN(), StrToD("0X1A", flags, 0.0, &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  CHECK_EQ(Double::NaN(), StrToD("-0x12", flags, 0.0, &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  flags = StringToDoubleConverter::ALLOW_HEX_FLOATS |
+      StringToDoubleConverter::ALLOW_TRAILING_JUNK;
+
+  CHECK_EQ(Double::NaN(), StrToD("0x12", flags, 0.0, &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  CHECK_EQ(Double::NaN(), StrToD("0x12p", flags, 0.0, &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  CHECK_EQ(Double::NaN(), StrToD("0x12z", flags, 0.0, &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  CHECK_EQ(3.0, StrToD("0x3p0z", flags, 0.0, &processed, &all_used));
+  CHECK_EQ(5, processed);
+
+  flags = StringToDoubleConverter::ALLOW_HEX_FLOATS |
+      StringToDoubleConverter::ALLOW_TRAILING_SPACES;
+
+  CHECK_EQ(3.0, StrToD("0x3p0 ", flags, 0.0, &processed, &all_used));
+  CHECK(all_used);
+
+  CHECK_EQ(3.0, StrToD("0x3.p0 ", flags, 0.0, &processed, &all_used));
   CHECK(all_used);
 }
 
@@ -3980,6 +4200,37 @@ TEST(StringToDoubleSeparator) {
            StrToD16("0x0@3.p0", flags, 0.0, &processed, &all_used,
                     char_separator, separator));
   CHECK(all_used);
+
+  // The separator is only allowed between significand digits, not in the
+  // exponent. The decimal exponent already rejects it; the hex-float exponent
+  // must reject it too.
+  separator = '_';
+  flags = StringToDoubleConverter::ALLOW_HEX |
+      StringToDoubleConverter::ALLOW_HEX_FLOATS;
+
+  CHECK_EQ(144.0,  // 0x12p3, separator between significand digits.
+           StrToD("0x1_2p3", flags, 0.0, &processed, &all_used, separator));
+  CHECK(all_used);
+
+  CHECK_EQ(1024.0,  // 0x1p10, no separator in the exponent.
+           StrToD("0x1p10", flags, 0.0, &processed, &all_used, separator));
+  CHECK(all_used);
+
+  CHECK_EQ(Double::NaN(),
+           StrToD("0x1p1_0", flags, 0.0, &processed, &all_used, separator));
+  CHECK_EQ(0, processed);
+
+  CHECK_EQ(Double::NaN(),
+           StrToD("0x1.8p1_0", flags, 0.0, &processed, &all_used, separator));
+  CHECK_EQ(0, processed);
+
+  CHECK_EQ(Double::NaN(),
+           StrToD("0x1p_10", flags, 0.0, &processed, &all_used, separator));
+  CHECK_EQ(0, processed);
+
+  CHECK_EQ(Double::NaN(),
+           StrToD("0x1p10_", flags, 0.0, &processed, &all_used, separator));
+  CHECK_EQ(0, processed);
 }
 
 TEST(StringToDoubleSpecialValues) {
@@ -4186,25 +4437,25 @@ static float StrToF16(const uc16* str16, int length, int flags,
                       bool* processed_all) {
   StringToDoubleConverter converter(flags, empty_string_value, Double::NaN(),
                                     NULL, NULL);
-  double result =
+  float result =
       converter.StringToFloat(str16, length, processed_characters_count);
   *processed_all = (length == *processed_characters_count);
   return result;
 }
 
 
-static double StrToF(const char* str, int flags, double empty_string_value,
-                     int* processed_characters_count, bool* processed_all) {
+static float StrToF(const char* str, int flags, double empty_string_value,
+                    int* processed_characters_count, bool* processed_all) {
   StringToDoubleConverter converter(flags, empty_string_value, Single::NaN(),
                                     NULL, NULL);
-  float result = converter.StringToFloat(str, strlen(str),
+  int len = static_cast<int>(strlen(str));
+  float result = converter.StringToFloat(str, len,
                                          processed_characters_count);
   *processed_all =
       ((strlen(str) == static_cast<unsigned>(*processed_characters_count)));
 
   uc16 buffer16[256];
   DOUBLE_CONVERSION_ASSERT(strlen(str) < DOUBLE_CONVERSION_ARRAY_SIZE(buffer16));
-  int len = strlen(str);
   for (int i = 0; i < len; i++) {
     buffer16[i] = str[i];
   }
@@ -5125,6 +5376,19 @@ TEST(StringToFloatHexString) {
   CHECK_EQ(-0.0f, StrToF("-0x1p-2000", flags, 0.0, &processed, &all_used));
   CHECK(all_used);
 
+  // Extreme exponents in hex-floats must not overflow internal exponent arithmetic.
+  CHECK_EQ(Single::Infinity(),
+           StrToF("0x1p2147483647", flags, 0.0f, &processed, &all_used));
+  CHECK(all_used);
+
+  CHECK_EQ(0.0f,
+           StrToF("0x1p-2147483647", flags, 0.0f, &processed, &all_used));
+  CHECK(all_used);
+
+  CHECK_EQ(-0.0f,
+           StrToF("-0x1p-2147483647", flags, 0.0f, &processed, &all_used));
+  CHECK(all_used);
+
   CHECK_EQ(Single::NaN(), StrToF(" ", flags, Single::NaN(),
                                  &processed, &all_used));
   CHECK_EQ(0, processed);
@@ -5189,6 +5453,42 @@ TEST(StringToFloatHexString) {
   CHECK_EQ(0.0f, StrToF("0x1.p-10000000000000000", flags, 0.0,
                                  &processed, &all_used));
   CHECK(all_used);
+
+  // Hex-floats must be rounded straight to float, without an intermediate
+  // rounding to a double significand. Subnormal results carry fewer than 24
+  // significand bits, so the value below rounds up when taken directly to
+  // float but rounds down if first rounded to a 24-bit normal significand.
+  CHECK_EQ(Single(0x001149a1u).value(),
+           StrToF("0x8a4.d047p-140", flags, 0.0, &processed, &all_used));
+  CHECK(all_used);
+
+  CHECK_EQ(Single(0x002f3e11u).value(),
+           StrToF("0x2f3.e10ap-137", flags, 0.0, &processed, &all_used));
+  CHECK(all_used);
+
+  // The double-rounding examples from the hex-integer cases above, written as
+  // hex-floats. Rounding the significand to a double first would land on
+  // 72057594037927936.0f; the direct single rounding gives the value below.
+  CHECK_EQ(72057602627862528.0f,
+           StrToF("0x100000100000008p0", flags, 0.0, &processed, &all_used));
+  CHECK(all_used);
+
+  CHECK_EQ(72057602627862528.0f,
+           StrToF("0x1000002FFFFFFF8p0", flags, 0.0, &processed, &all_used));
+  CHECK(all_used);
+
+  // Without ALLOW_HEX a hex literal that is not a hex-float is junk.
+  CHECK_EQ(Single::NaN(), StrToF("0x12", flags, 0.0, &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  flags = StringToDoubleConverter::ALLOW_HEX_FLOATS |
+      StringToDoubleConverter::ALLOW_TRAILING_JUNK;
+
+  CHECK_EQ(Single::NaN(), StrToF("0x12z", flags, 0.0, &processed, &all_used));
+  CHECK_EQ(0, processed);
+
+  CHECK_EQ(3.0f, StrToF("0x3p0z", flags, 0.0, &processed, &all_used));
+  CHECK_EQ(5, processed);
 }
 
 
@@ -5887,6 +6187,105 @@ TEST(StringToDoubleCaseInsensitiveSpecialValues) {
   CHECK_EQ(0, processed);
 
   CHECK_EQ(1.0, converter.StringToDouble("+inf", 4, &processed));
+  CHECK_EQ(0, processed);
+}
+
+
+TEST(StringToDoubleCaseInsensitiveMixedCaseSymbols) {
+  int processed = 0;
+
+  const int flags = StringToDoubleConverter::ALLOW_CASE_INSENSITIVITY;
+
+  // The symbols carry upper-case letters. Case-insensitive matching must fold
+  // both the input and the symbol, so any casing of the input is accepted,
+  // including the symbol's own spelling.
+  StringToDoubleConverter converter(flags, 0.0, 1.0, "Infinity", "NaN");
+
+  CHECK_EQ(Double::Infinity(),
+           converter.StringToDouble("Infinity", 8, &processed));
+  CHECK_EQ(8, processed);
+
+  CHECK_EQ(Double::Infinity(),
+           converter.StringToDouble("infinity", 8, &processed));
+  CHECK_EQ(8, processed);
+
+  CHECK_EQ(Double::Infinity(),
+           converter.StringToDouble("INFINITY", 8, &processed));
+  CHECK_EQ(8, processed);
+
+  CHECK_EQ(Double::NaN(), converter.StringToDouble("nan", 3, &processed));
+  CHECK_EQ(3, processed);
+
+  CHECK_EQ(Double::NaN(), converter.StringToDouble("NAN", 3, &processed));
+  CHECK_EQ(3, processed);
+
+  const uc16 infinity16[] = { 'i', 'N', 'f', 'I', 'n', 'I', 't', 'Y' };
+  CHECK_EQ(Double::Infinity(),
+           converter.StringToDouble(infinity16, 8, &processed));
+  CHECK_EQ(8, processed);
+
+  // A case-sensitive converter with the same symbols still rejects a spelling
+  // that differs only in case.
+  StringToDoubleConverter cs(StringToDoubleConverter::NO_FLAGS,
+                             0.0, 1.0, "Infinity", "NaN");
+  CHECK_EQ(1.0, cs.StringToDouble("infinity", 8, &processed));
+  CHECK_EQ(0, processed);
+  CHECK_EQ(Double::Infinity(),
+           cs.StringToDouble("Infinity", 8, &processed));
+  CHECK_EQ(8, processed);
+}
+
+
+TEST(StringToDoubleNonAsciiSpecialValues) {
+  int processed = 0;
+
+  // Use 1.0 as junk_string_value.
+  StringToDoubleConverter converter(StringToDoubleConverter::NO_FLAGS,
+                                    0.0, 1.0, "Infinity", "NaN");
+
+  // The ASCII spellings are the only ones that match.
+  const uc16 nan16[] = { 'N', 'a', 'N' };
+  CHECK_EQ(Double::NaN(), converter.StringToDouble(nan16, 3, &processed));
+  CHECK_EQ(3, processed);
+
+  const uc16 infinity16[] = { 'I', 'n', 'f', 'i', 'n', 'i', 't', 'y' };
+  CHECK_EQ(Double::Infinity(),
+           converter.StringToDouble(infinity16, 8, &processed));
+  CHECK_EQ(8, processed);
+
+  // Characters whose low byte equals a symbol character must not match it.
+  // U+014E and U+FF4E end in 'N', U+0161 ends in 'a', U+FF49 ends in 'I' and
+  // U+016E ends in 'n'.
+  const uc16 nan_lead[] = { 0x014E, 'a', 'N' };
+  CHECK_EQ(1.0, converter.StringToDouble(nan_lead, 3, &processed));
+  CHECK_EQ(0, processed);
+
+  const uc16 nan_tail[] = { 'N', 0x0161, 'N' };
+  CHECK_EQ(1.0, converter.StringToDouble(nan_tail, 3, &processed));
+  CHECK_EQ(0, processed);
+
+  const uc16 infinity_lead[] = { 0xFF49, 'n', 'f', 'i', 'n', 'i', 't', 'y' };
+  CHECK_EQ(1.0, converter.StringToDouble(infinity_lead, 8, &processed));
+  CHECK_EQ(0, processed);
+
+  const uc16 infinity_tail[] = { 'I', 0x016E, 'f', 'i', 'n', 'i', 't', 'y' };
+  CHECK_EQ(1.0, converter.StringToDouble(infinity_tail, 8, &processed));
+  CHECK_EQ(0, processed);
+
+  // The same holds when the symbols are matched case-insensitively.
+  const int ci_flags = StringToDoubleConverter::ALLOW_CASE_INSENSITIVITY;
+  StringToDoubleConverter ci_converter(ci_flags, 0.0, 1.0, "infinity", "nan");
+
+  const uc16 nan_ci[] = { 'n', 'a', 'N' };
+  CHECK_EQ(Double::NaN(), ci_converter.StringToDouble(nan_ci, 3, &processed));
+  CHECK_EQ(3, processed);
+
+  const uc16 nan_ci_lead[] = { 0x014E, 'a', 'n' };
+  CHECK_EQ(1.0, ci_converter.StringToDouble(nan_ci_lead, 3, &processed));
+  CHECK_EQ(0, processed);
+
+  const uc16 nan_ci_tail[] = { 'n', 'a', 0x014E };
+  CHECK_EQ(1.0, ci_converter.StringToDouble(nan_ci_tail, 3, &processed));
   CHECK_EQ(0, processed);
 }
 

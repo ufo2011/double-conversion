@@ -1,0 +1,109 @@
+name: ci
+
+on: push
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        container: [ ubuntu-latest, macos-latest, windows-latest ]
+        build_type: [ Debug, Release ]
+        # When updating the CMake version, make sure to also update the CMakeLists.txt.
+        cmake_version: ["3.29", "4.0.1", latest, latestrc]
+        exclude:
+          # The windows-latest runner ships Visual Studio 18 2026, whose CMake
+          # generator only exists since CMake 4.2. Older CMake can't target it
+          # and falls back to "NMake Makefiles" (not on PATH), failing to
+          # configure. These versions are still exercised on Linux and macOS.
+          - container: windows-latest
+            cmake_version: "3.29"
+          - container: windows-latest
+            cmake_version: "4.0.1"
+        include:
+          # Still test the oldest Windows-capable CMake: 4.2 is the first
+          # release with the "Visual Studio 18 2026" generator.
+          - container: windows-latest
+            build_type: Debug
+            cmake_version: "4.2"
+          - container: windows-latest
+            build_type: Release
+            cmake_version: "4.2"
+
+    runs-on: ${{ matrix.container }}
+
+    name: ${{ matrix.container }} - ${{ matrix.build_type }} - CMake ${{ matrix.cmake_version }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up CMake
+        uses: lukka/get-cmake@fffaaafeea488556c2c12dad60690008bc1caacb # v4.4.2
+        with:
+          cmakeVersion: ${{ matrix.cmake_version }}
+
+      - name: Check for cmake warnings
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p build-warning
+          cd build-warning
+          cmake -S .. 2>&1 | tee cmake-warnings.log
+          # Check for warnings in the log file.
+          if grep -q "CMake Warning" cmake-warnings.log; then
+            echo "CMake warnings found!"
+            cat cmake-warnings.log
+            exit 1
+          fi
+
+      - name: Configure
+        shell: bash
+        # Configure CMake in a 'buildX' subdirectory.
+        # We can't use `build` as `BUILD` is already taken by the bazel build file.
+        # On Mac and Windows this leads to a conflict.
+        run: |
+          mkdir -p buildX
+          cd buildX
+          cmake \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_INSTALL_PREFIX:PATH=${{ github.workspace }}/install_dir \
+            -DBUILD_SHARED_LIBS=ON \
+            ..
+
+      - name: Build shared
+        run: |
+          cmake --build buildX --config ${{ matrix.build_type }}
+
+      - name: Install shared
+        run: |
+          cmake --install buildX --config ${{ matrix.build_type }}
+
+      - name: Build static
+        run: |
+          cmake -DBUILD_SHARED_LIBS=OFF buildX
+          cmake --build buildX --config ${{ matrix.build_type }}
+
+      - name: Install static
+        run: |
+          cmake --install buildX --config ${{ matrix.build_type }}
+
+      - name: Test
+        if: runner.os != 'Windows'
+        working-directory: ${{ github.workspace }}/buildX
+        # Execute all tests.
+        run: |
+          ctest
+          # Also run the tests directly, just in case we forgot to add it to ctest.
+          test/cctest/cctest
+
+      - name: Test - Windows
+        if: runner.os == 'Windows'
+        working-directory: ${{ github.workspace }}/buildX
+        # Execute all tests.
+        run: |
+          ctest -C ${{ matrix.build_type }}
+          # Also run the tests directly, just in case we forgot to add it to ctest.
+          test/cctest/${{ matrix.build_type }}/cctest.exe

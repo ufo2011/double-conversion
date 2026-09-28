@@ -43,7 +43,7 @@ static const int kBufferSize = 100;
 
 // Removes trailing '0' digits.
 static void TrimRepresentation(Vector<char> representation) {
-  int len = strlen(representation.start());
+  int len = static_cast<int>(strlen(representation.start()));
   int i;
   for (i = len - 1; i >= 0; --i) {
     if (representation[i] != '0') break;
@@ -296,6 +296,20 @@ TEST(FastDtoaPrecisionVariousDoubles) {
   CHECK(status);
   CHECK_EQ("7989", buffer.start());
   CHECK_EQ(192, point);
+
+  // requested_digits <= 0 must not write any digit. Fence the one-byte buffer
+  // with a sentinel and confirm FastDtoa fails without touching past it.
+  char tiny_container[2];
+  tiny_container[1] = 0x7f;
+  Vector<char> tiny(tiny_container, 1);
+  status = FastDtoa(1234567.0, FAST_DTOA_PRECISION, 0, tiny, &length, &point);
+  CHECK(!status);
+  CHECK_EQ(0, length);
+  CHECK_EQ(0x7f, static_cast<int>(tiny_container[1]));
+  status = FastDtoa(1234567.0, FAST_DTOA_PRECISION, -3, tiny, &length, &point);
+  CHECK(!status);
+  CHECK_EQ(0, length);
+  CHECK_EQ(0x7f, static_cast<int>(tiny_container[1]));
 }
 
 

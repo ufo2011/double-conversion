@@ -39,12 +39,14 @@ using namespace double_conversion;
 static const int kBufferSize = 1024;
 
 static void AssignHexString(Bignum* bignum, const char* str) {
-  bignum->AssignHexString(Vector<const char>(str, strlen(str)));
+  int len = static_cast<int>(strlen(str));
+  bignum->AssignHexString(Vector<const char>(str, len));
 }
 
 
 static void AssignDecimalString(Bignum* bignum, const char* str) {
-  bignum->AssignDecimalString(Vector<const char>(str, strlen(str)));
+  int len = static_cast<int>(strlen(str));
+  bignum->AssignDecimalString(Vector<const char>(str, len));
 }
 
 
@@ -126,6 +128,14 @@ TEST(ShiftLeft) {
   CHECK_EQ("0", buffer);
 
   AssignHexString(&bignum, "1");
+  bignum.ShiftLeft(0);
+  CHECK(bignum.ToHexString(buffer, kBufferSize));
+  CHECK_EQ("1", buffer);
+
+  bignum.ShiftLeft(-1);
+  CHECK(bignum.ToHexString(buffer, kBufferSize));
+  CHECK_EQ("1", buffer);
+
   bignum.ShiftLeft(1);
   CHECK(bignum.ToHexString(buffer, kBufferSize));
   CHECK_EQ("2", buffer);
@@ -1504,4 +1514,27 @@ TEST(AssignPowerUInt16) {
            "B7E1B79FF11E21D83387A1CE1F5882B31E4B5D8DE415BDBE6854466DF"
            "343362267A7E8833119D31D02E18DB5B0E8F6A64B0ED0D0062FFFF",
            buffer);
+
+  bignum.AssignPowerUInt16(10, -1);
+  CHECK(bignum.ToHexString(buffer, kBufferSize));
+  CHECK_EQ("1", buffer);
+}
+
+
+TEST(MultiplyByPowerOfTen) {
+  Bignum bignum;
+  char buffer[kBufferSize];
+
+  AssignHexString(&bignum, "1");
+  bignum.MultiplyByPowerOfTen(0);
+  CHECK(bignum.ToHexString(buffer, kBufferSize));
+  CHECK_EQ("1", buffer);
+
+  bignum.MultiplyByPowerOfTen(-1);
+  CHECK(bignum.ToHexString(buffer, kBufferSize));
+  CHECK_EQ("1", buffer);
+
+  bignum.MultiplyByPowerOfTen(1);
+  CHECK(bignum.ToHexString(buffer, kBufferSize));
+  CHECK_EQ("A", buffer);
 }

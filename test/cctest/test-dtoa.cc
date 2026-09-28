@@ -66,7 +66,7 @@ static void DoubleToAscii(double v, DtoaMode test_mode, int requested_digits,
 
 // Removes trailing '0' digits.
 static void TrimRepresentation(Vector<char> representation) {
-  int len = strlen(representation.start());
+  int len = static_cast<int>(strlen(representation.start()));
   int i;
   for (i = len - 1; i >= 0; --i) {
     if (representation[i] != '0') break;
@@ -90,6 +90,14 @@ TEST(DtoaVariousDoubles) {
   CHECK_EQ(1, point);
 
   DoubleToAscii(0.0f, SHORTEST_SINGLE, 0, buffer, &sign, &length, &point);
+  CHECK_EQ("0", buffer.start());
+  CHECK_EQ(1, point);
+
+  // A positive double below the smallest positive float rounds to +0.0f, so in
+  // single mode it is a zero. It must render as "0" and not spill past the
+  // buffer while generating digits at the double's magnitude.
+  DoubleToAscii(5e-324, SHORTEST_SINGLE, 0, buffer, &sign, &length, &point);
+  CHECK_EQ(1, length);
   CHECK_EQ("0", buffer.start());
   CHECK_EQ(1, point);
 
@@ -229,13 +237,13 @@ TEST(DtoaVariousDoubles) {
 
   DoubleToAscii(-2147483648.0, SHORTEST, 0,
                 buffer, &sign, &length, &point);
-  CHECK_EQ(1, sign);
+  CHECK_EQ(true, sign);
   CHECK_EQ("2147483648", buffer.start());
   CHECK_EQ(10, point);
 
   DoubleToAscii(-2147483648.0, SHORTEST_SINGLE, 0,
                 buffer, &sign, &length, &point);
-  CHECK_EQ(1, sign);
+  CHECK_EQ(true, sign);
   CHECK_EQ("21474836", buffer.start());
   CHECK_EQ(10, point);
 
@@ -243,7 +251,7 @@ TEST(DtoaVariousDoubles) {
   DoubleToAscii(-2147483648.0, FIXED, 2, buffer, &sign, &length, &point);
   CHECK_GE(2, length - point);
   TrimRepresentation(buffer);
-  CHECK_EQ(1, sign);
+  CHECK_EQ(true, sign);
   CHECK_EQ("2147483648", buffer.start());
   CHECK_EQ(10, point);
 
@@ -251,19 +259,19 @@ TEST(DtoaVariousDoubles) {
                 buffer, &sign, &length, &point);
   CHECK_GE(5, length);
   TrimRepresentation(buffer);
-  CHECK_EQ(1, sign);
+  CHECK_EQ(true, sign);
   CHECK_EQ("21475", buffer.start());
   CHECK_EQ(10, point);
 
   DoubleToAscii(-3.5844466002796428e+298, SHORTEST, 0,
                 buffer, &sign, &length, &point);
-  CHECK_EQ(1, sign);
+  CHECK_EQ(true, sign);
   CHECK_EQ("35844466002796428", buffer.start());
   CHECK_EQ(299, point);
 
   DoubleToAscii(-3.5844466002796428e+298, PRECISION, 10,
                 buffer, &sign, &length, &point);
-  CHECK_EQ(1, sign);
+  CHECK_EQ(true, sign);
   CHECK_GE(10, length);
   TrimRepresentation(buffer);
   CHECK_EQ("35844466", buffer.start());
@@ -307,7 +315,7 @@ TEST(DtoaVariousDoubles) {
 
   DoubleToAscii(4128420500802942e-24, SHORTEST, 0,
                 buffer, &sign, &length, &point);
-  CHECK_EQ(0, sign);
+  CHECK_EQ(false, sign);
   CHECK_EQ("4128420500802942", buffer.start());
   CHECK_EQ(-8, point);
 
@@ -416,6 +424,18 @@ TEST(DtoaCorners) {
   DoubleToAscii(1.0, FIXED, 0, buffer, &sign, &length, &point);
   CHECK_EQ(1, length);
   CHECK_EQ("1", buffer.start());
+  CHECK(!sign);
+
+  DoubleToAscii(1.0, PRECISION, -1, buffer, &sign, &length, &point);
+  CHECK_EQ(0, length);
+  CHECK_EQ(0, point);
+  CHECK_EQ("", buffer.start());
+  CHECK(!sign);
+
+  DoubleToAscii(1.0, FIXED, -1, buffer, &sign, &length, &point);
+  CHECK_EQ(0, length);
+  CHECK_EQ(0, point);
+  CHECK_EQ("", buffer.start());
   CHECK(!sign);
 }
 

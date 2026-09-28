@@ -43,7 +43,7 @@ using namespace double_conversion;
 // Removes trailing '0' digits.
 // Can return the empty string if all digits are 0.
 static void TrimRepresentation(Vector<char> representation) {
-  int len = strlen(representation.start());
+  int len = static_cast<int>(strlen(representation.start()));
   int i;
   for (i = len - 1; i >= 0; --i) {
     if (representation[i] != '0') break;
@@ -255,6 +255,55 @@ TEST(BignumDtoaVariousDoubles) {
   TrimRepresentation(buffer);
   CHECK_EQ("100000000000000128", buffer.start());
   CHECK_EQ(18, point);
+}
+
+
+TEST(BignumDtoaZeroPrecision) {
+  // Requesting zero precision digits must produce an empty representation
+  // without storing the "last digit" at buffer[-1]. Sentinel bytes sit
+  // immediately before the output buffer to catch that store.
+  char container[kBufferSize];
+  container[0] = '@';
+  container[1] = '@';
+  Vector<char> buffer(container + 2, kBufferSize - 2);
+  int length;
+  int point;
+
+  BignumDtoa(1.0, BIGNUM_DTOA_PRECISION, 0, buffer, &length, &point);
+  CHECK_EQ(0, length);
+  CHECK(container[0] == '@');
+  CHECK(container[1] == '@');
+
+  BignumDtoa(123.456, BIGNUM_DTOA_PRECISION, 0, buffer, &length, &point);
+  CHECK_EQ(0, length);
+  CHECK(container[0] == '@');
+  CHECK(container[1] == '@');
+
+  // Negative requested digits must also produce an empty representation
+  // without storing past the start of the buffer.
+  BignumDtoa(1.0, BIGNUM_DTOA_PRECISION, -1, buffer, &length, &point);
+  CHECK_EQ(0, length);
+  CHECK_EQ(0, point);
+  CHECK(container[0] == '@');
+  CHECK(container[1] == '@');
+
+  BignumDtoa(123.456, BIGNUM_DTOA_PRECISION, -2, buffer, &length, &point);
+  CHECK_EQ(0, length);
+  CHECK_EQ(0, point);
+  CHECK(container[0] == '@');
+  CHECK(container[1] == '@');
+
+  BignumDtoa(1.0, BIGNUM_DTOA_FIXED, -1, buffer, &length, &point);
+  CHECK_EQ(0, length);
+  CHECK_EQ(0, point);
+  CHECK(container[0] == '@');
+  CHECK(container[1] == '@');
+
+  BignumDtoa(123.456, BIGNUM_DTOA_FIXED, -2, buffer, &length, &point);
+  CHECK_EQ(0, length);
+  CHECK_EQ(0, point);
+  CHECK(container[0] == '@');
+  CHECK(container[1] == '@');
 }
 
 
